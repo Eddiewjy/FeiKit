@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Stello Architecture</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Caveat:wght@400;600;700&family=Coming+Soon&family=Patrick+Hand&display=swap');
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #f7f4ee;
+    width: 100vw; height: 100vh;
+    overflow: hidden;
+    display: flex; align-items: center; justify-content: center;
+  }
+  canvas { width: 100%; height: 100%; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<script>
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+const dpr = window.devicePixelRatio || 2;
+let W, H;
+
+function resize() {
+  W = window.innerWidth; H = window.innerHeight;
+  canvas.width = W * dpr; canvas.height = H * dpr;
+  canvas.style.width = W + 'px'; canvas.style.height = H + 'px';
+  ctx.scale(dpr, dpr);
+}
+resize();
+
+// ═══════ 手绘工具 ═══════
+function rnd(r) { return (Math.random() - 0.5) * 2 * r; }
+
+function wobblyLine(x1, y1, x2, y2, wobble = 1.5) {
+  const dx = x2 - x1, dy = y2 - y1;
+  const len = Math.sqrt(dx * dx + dy * dy);
+  const steps = Math.max(Math.floor(len / 8), 4);
+  const perpX = -dy / (len || 1), perpY = dx / (len || 1);
+  ctx.beginPath();
+  ctx.moveTo(x1 + rnd(wobble), y1 + rnd(wobble));
+  for (let i = 1; i <= steps; i++) {
+    const t = i / steps;
+    ctx.lineTo(x1 + dx * t + perpX * rnd(wobble), y1 + dy * t + perpY * rnd(wobble));
+  }
+  ctx.stroke();
+}
+
+function scribbleCircle(cx, cy, r, color, alpha, thick = false) {
+  ctx.save();
+  ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  const fillAngle = -0.4 + rnd(0.15);
+  const cosA = Math.cos(fillAngle), sinA = Math.sin(fillAngle);
+  const spacing = 3.5 + rnd(0.5);
+  const fillR = r * 0.95;
+  const count = Math.ceil(fillR * 2 / spacing);
+  ctx.beginPath();
+  let first = true;
+  for (let i = 0; i < count; i++) {
+    const yL = -fillR + i * spacing + rnd(1);
+    const half = Math.sqrt(Math.max(0, fillR * fillR - yL * yL));
+    if (half < 2) continue;
+    const goR = i % 2 === 0;
+    const x1 = goR ? -half : half, x2 = goR ? half : -half;
+    const sx1 = cx + x1 * cosA - yL * sinA + rnd(1.5);
+    const sy1 = cy + x1 * sinA + yL * cosA + rnd(1.5);
+    const sx2 = cx + x2 * cosA - yL * sinA + rnd(1.5);
+    const sy2 = cy + x2 * sinA + yL * cosA + rnd(1.5);
+    if (first) { ctx.moveTo(sx1, sy1); first = false; }
+    else ctx.lineTo(sx1, sy1);
+    ctx.quadraticCurveTo((sx1 + sx2) / 2 + rnd(2), (sy1 + sy2) / 2 + rnd(2), sx2, sy2);
+  }
+  ctx.strokeStyle = color; ctx.lineWidth = thick ? 1.8 : 1.4; ctx.globalAlpha = alpha * 0.55;
+  ctx.stroke();
+  const rings = thick ? 2 : 1;
+  for (let ring = 0; ring < rings; ring++) {
+    const rr = r + ring * 1.5 + rnd(1);
+    const startA = rnd(0.5), sweep = Math.PI * 2 + rnd(0.6) - 0.1;
+    ctx.beginPath();
+    for (let i = 0; i <= 32; i++) {
+      const a = startA + (i / 32) * sweep;
+      const wr = rr + rnd(2.5 + ring);
+      const x = cx + Math.cos(a) * wr, y = cy + Math.sin(a) * wr;
+      i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+    }
+    ctx.strokeStyle = color; ctx.lineWidth = 1.6 - ring * 0.3; ctx.globalAlpha = alpha * (0.75 - ring * 0.2);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function drawLabel(x, y, text, size, color, alpha = 1) {
+  ctx.save();
+  ctx.font = `${size}px "Caveat", cursive`;
+  ctx.textAlign = 'center'; ctx.fillStyle = color; ctx.globalAlpha = alpha;
+  ctx.fillText(text, x, y);
+  ctx.restore();
+}
+
+function drawCnLabel(x, y, text, size, color, alpha = 1, align = 'center') {
+  ctx.save();
+  ctx.font = `${size}px -apple-system, "PingFang SC", sans-serif`;
+  ctx.textAlign = align; ctx.fillStyle = color; ctx.globalAlpha = alpha;
+  ctx.fillText(text, x, y);
+  ctx.restore();
+}
+
+function drawSmallLabel(x, y, text, size, color, alpha = 1, align = 'center') {
+  ctx.save();
+  ctx.font = `${size}px "Coming Soon", cursive`;
+  ctx.textAlign = align; ctx.fillStyle = color; ctx.globalAlpha = alpha;
+  ctx.fillText(text, x, y);
+  ctx.restore();
+}
+
+function drawDashedCurve(x1, y1, x2, y2, color, alpha, bend = 30) {
+  ctx.save();
+  ctx.strokeStyle = color; ctx.lineWidth = 1.2; ctx.globalAlpha = alpha;
+  ctx.setLineDash([5, 4]);
+  const mx = (x1 + x2) / 2, my = (y1 + y2) / 2;
+  const dx = x2 - x1, dy = y2 - y1;
+  const len = Math.sqrt(dx * dx + dy * dy);
+  const perpX = -dy / (len || 1), perpY = dx / (len || 1);
+  ctx.beginPath(); ctx.moveTo(x1, y1);
+  ctx.quadraticCurveTo(mx + perpX * bend, my + perpY * bend, x2, y2);
+  ctx.stroke(); ctx.setLineDash([]);
+  ctx.restore();
+}
+
+function drawPill(x, y, text, bg, border, textColor, alpha) {
+  ctx.save(); ctx.globalAlpha = alpha;
+  ctx.font = '11px -apple-system, "PingFang SC", sans-serif';
+  const tw = ctx.measureText(text).width;
+  const pw = tw + 18, ph = 22, rx = 6;
+  const lx = x - pw / 2, ly = y - ph / 2;
+  ctx.beginPath();
+  ctx.roundRect(lx, ly, pw, ph, rx);
+  ctx.fillStyle = bg; ctx.fill();
+  ctx.strokeStyle = border; ctx.lineWidth = 1.2; ctx.stroke();
+  ctx.fillStyle = textColor; ctx.textAlign = 'center';
+  ctx.fillText(text, x, y + 4);
+  ctx.restore();
+}
+
+// 弯曲虚线 + 箭头
+function drawFlowArrow(x1, y1, x2, y2, color, alpha, bend = 0) {
+  ctx.save();
+  ctx.strokeStyle = color; ctx.lineWidth = 2; ctx.globalAlpha = alpha;
+  ctx.lineCap = 'round';
+  ctx.setLineDash([6, 4]);
+  const mx = (x1 + x2) / 2, my = (y1 + y2) / 2;
+  const dx = x2 - x1, dy = y2 - y1;
+  const len = Math.sqrt(dx * dx + dy * dy);
+  const perpX = -dy / (len || 1), perpY = dx / (len || 1);
+  const cpx = mx + perpX * bend, cpy = my + perpY * bend;
+  ctx.beginPath(); ctx.moveTo(x1, y1);
+  ctx.quadraticCurveTo(cpx, cpy, x2, y2);
+  ctx.stroke(); ctx.setLineDash([]);
+  // 箭头
+  // 计算曲线终点处的切线方向
+  const tt = 0.95;
+  const tangX = 2 * (1 - tt) * (cpx - x1) + 2 * tt * (x2 - cpx);
+  const tangY = 2 * (1 - tt) * (cpy - y1) + 2 * tt * (y2 - cpy);
+  const angle = Math.atan2(tangY, tangX);
+  const headLen = 10;
+  ctx.beginPath();
+  ctx.moveTo(x2, y2);
+  ctx.lineTo(x2 - headLen * Math.cos(angle - 0.35), y2 - headLen * Math.sin(angle - 0.35));
+  ctx.moveTo(x2, y2);
+  ctx.lineTo(x2 - headLen * Math.cos(angle + 0.35), y2 - headLen * Math.sin(angle + 0.35));
+  ctx.stroke();
+  ctx.restore();
+}
+
+// ═══════ 三角布局：Main 居中，3 个 Session 在三个角 ═══════
+
+const NODES = [
+  { id: 'main', label: '主会话', x: 0.50, y: 0.46, r: 38, color: '#3a6bc5', isMain: true },
+  // 左上角
+  { id: 'a', label: '会话 A', x: 0.14, y: 0.16, r: 22, color: '#c94a4a' },
+  { id: 'a1', x: 0.05, y: 0.07, r: 13, color: '#c94a4a' },
+  { id: 'a2', x: 0.23, y: 0.05, r: 13, color: '#7E57C2' },
+  // 右上角
+  { id: 'b', label: '会话 B', x: 0.86, y: 0.16, r: 22, color: '#5ba85b' },
+  { id: 'b1', x: 0.77, y: 0.05, r: 13, color: '#5ba85b' },
+  { id: 'b2', x: 0.95, y: 0.07, r: 13, color: '#3a6bc5' },
+  // 左下角
+  { id: 'c', label: '会话 C', x: 0.14, y: 0.76, r: 22, color: '#c78a30' },
+  { id: 'c1', x: 0.05, y: 0.86, r: 13, color: '#c78a30' },
+  { id: 'c2', x: 0.23, y: 0.87, r: 13, color: '#e91e8c' },
+];
+
+// 子 session 的连线（只连 session 和它的 fork，不连 main）
+const FORK_EDGES = [
+  ['a', 'a1'], ['a', 'a2'],
+  ['b', 'b1'], ['b', 'b2'],
+  ['c', 'c1'], ['c', 'c2'],
+];
+
+// Main 到 session 的虚线
+const HUB_LINKS = [
+  { from: 'main', to: 'a' },
+  { from: 'main', to: 'b' },
+  { from: 'main', to: 'c' },
+];
+
+function getNode(id) { return NODES.find(n => n.id === id); }
+function px(n) { return n.x * W; }
+function py(n) { return n.y * H; }
+
+// ═══════ 粒子 ═══════
+let uploadParticles = [];
+let insightParticles = [];
+
+function spawnUpload(t) {
+  if (t < 3.5 || t > 7.0) return;
+  const sources = ['a', 'b', 'c', 'a1', 'a2', 'b1', 'b2', 'c1', 'c2'];
+  const main = getNode('main');
+  if (Math.random() < 0.3) {
+    const src = getNode(sources[Math.floor(Math.random() * sources.length)]);
+    uploadParticles.push({
+      x: px(src), y: py(src),
+      tx: px(main), ty: py(main),
+      birth: t, life: 1.2 + Math.random() * 0.5,
+      color: '#5b8fd9', size: 2.5 + Math.random() * 2,
+    });
+  }
+}
+
+function spawnInsight(t) {
+  if (t < 7.0 || t > 10.5) return;
+  const targets = ['a', 'b', 'c'];
+  const main = getNode('main');
+  if (Math.random() < 0.22) {
+    const tgt = getNode(targets[Math.floor(Math.random() * targets.length)]);
+    insightParticles.push({
+      x: px(main), y: py(main),
+      tx: px(tgt), ty: py(tgt),
+      birth: t, life: 1.0 + Math.random() * 0.4,
+      color: '#e8a838', size: 3 + Math.random() * 2,
+    });
+  }
+}
+
+function drawParticles(arr, t) {
+  for (let i = arr.length - 1; i >= 0; i--) {
+    const p = arr[i];
+    const age = t - p.birth;
+    if (age > p.life) { arr.splice(i, 1); continue; }
+    const prog = age / p.life;
+    const ease = easeOut(prog);
+    const cx = p.x + (p.tx - p.x) * ease;
+    const cy = p.y + (p.ty - p.y) * ease;
+    const alpha = prog < 0.15 ? prog / 0.15 : prog > 0.75 ? (1 - prog) / 0.25 : 1;
+    ctx.save();
+    // 发光
+    ctx.globalAlpha = alpha * 0.6;
+    const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, p.size * 3);
+    grad.addColorStop(0, p.color); grad.addColorStop(1, 'transparent');
+    ctx.fillStyle = grad;
+    ctx.beginPath(); ctx.arc(cx, cy, p.size * 3, 0, Math.PI * 2); ctx.fill();
+    // 实心核
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = p.color;
+    ctx.beginPath(); ctx.arc(cx, cy, p.size, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+  }
+}
+
+// ═══════ ease ═══════
+function easeOut(t) { return 1 - Math.pow(1 - t, 3); }
+function clamp01(v) { return Math.max(0, Math.min(1, v)); }
+function fadeIn(t, start, dur) { return clamp01((t - start) / dur); }
+
+// ═══════ 主渲染 ═══════
+let startTime = 0;
+
+function frame(now) {
+  if (!startTime) startTime = now;
+  const t = (now - startTime) / 1000;
+
+  ctx.save();
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, W, H);
+
+  // ── 标题 ──
+  const titleAlpha = fadeIn(t, 0.2, 1.0);
+  drawLabel(W / 2, H * 0.955, 'Stello · Agent Cognitive Topology Engine', 26, '#222', titleAlpha * 0.7);
+
+  // ══════════════════════════════════
+  // 阶段 1: Main 出现 + 三个 Session 在三角出现 (0~2.5s)
+  // ══════════════════════════════════
+
+  // Main 节点
+  const mainP = easeOut(clamp01(t / 0.6));
+  if (mainP > 0) {
+    const main = getNode('main');
+    scribbleCircle(px(main), py(main), main.r * mainP, main.color, mainP, true);
+    const labelA = fadeIn(t, 0.3, 0.5);
+    drawCnLabel(px(main), py(main) + main.r + 20, '主会话', 15, '#3a6bc5', labelA);
+    drawSmallLabel(px(main), py(main) + main.r + 36, 'Main Session', 11, '#888', labelA * 0.6);
+  }
+
+  // （节点之间不画连线，通过粒子流表达关系）
+
+  // 三个 Session 节点 + forks
+  for (const node of NODES) {
+    if (node.isMain) continue;
+    const isSess = node.id.length === 1;
+    const delay = isSess ? 0.6 : 1.3;
+    const nodeP = easeOut(clamp01((t - delay) / 0.6));
+    if (nodeP <= 0) continue;
+    scribbleCircle(px(node), py(node), node.r * nodeP, node.color, nodeP, false);
+    // 标签（只给 session 加）
+    if (isSess && node.label) {
+      const la = fadeIn(t, delay + 0.3, 0.5);
+      drawCnLabel(px(node), py(node) + node.r + 16, node.label, 13, node.color, la);
+    }
+  }
+
+  // （不画 fork 连线）
+
+  // ══════════════════════════════════
+  // 阶段 2: L3 对话层标注 (2.5s)
+  // ══════════════════════════════════
+  const l3Alpha = fadeIn(t, 2.5, 0.8);
+  if (l3Alpha > 0) {
+    for (const id of ['a', 'b', 'c']) {
+      const n = getNode(id);
+      drawPill(px(n), py(n) - n.r - 14, 'L3 对话', 'rgba(100,100,100,0.06)', 'rgba(100,100,100,0.3)', '#666', l3Alpha * 0.7);
+    }
+  }
+
+  // ══════════════════════════════════
+  // 阶段 3: 摘要上传 (3.5~7s)
+  // ══════════════════════════════════
+  spawnUpload(t);
+  drawParticles(uploadParticles, t);
+
+  // 上传流向箭头（从每个 session 指向 main）
+  const uploadArrowAlpha = fadeIn(t, 3.8, 0.8);
+  if (uploadArrowAlpha > 0) {
+    const main = getNode('main');
+    for (const id of ['a', 'b', 'c']) {
+      const n = getNode(id);
+      // 从节点边缘到 main 边缘
+      const dx = px(main) - px(n), dy = py(main) - py(n);
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      const ux = dx / dist, uy = dy / dist;
+      const fx = px(n) + ux * (n.r + 8), fy = py(n) + uy * (n.r + 8);
+      const tx = px(main) - ux * (main.r + 8), ty = py(main) - uy * (main.r + 8);
+      drawFlowArrow(fx, fy, tx, ty, '#5b8fd9', uploadArrowAlpha * 0.35, 0);
+    }
+  }
+
+  // 左侧摘要上传说明
+  const uploadTextAlpha = fadeIn(t, 4.0, 0.8);
+  if (uploadTextAlpha > 0) {
+    const lx = W * 0.02, ly = H * 0.44;
+    drawCnLabel(lx, ly, '⬆ 摘要上传', 16, '#3a6bc5', uploadTextAlpha * 0.85, 'left');
+    drawCnLabel(lx, ly + 22, 'L3 原始对话', 11, '#5b8fd9', uploadTextAlpha * 0.6, 'left');
+    drawCnLabel(lx, ly + 38, '→ L2 会话摘要', 11, '#5b8fd9', uploadTextAlpha * 0.6, 'left');
+    drawCnLabel(lx, ly + 54, '→ L1 全局认知', 11, '#5b8fd9', uploadTextAlpha * 0.6, 'left');
+    drawCnLabel(lx, ly + 78, '每个会话的对话内容', 10, '#999', uploadTextAlpha * 0.45, 'left');
+    drawCnLabel(lx, ly + 94, '被逐层提炼并汇总到', 10, '#999', uploadTextAlpha * 0.45, 'left');
+    drawCnLabel(lx, ly + 110, '主会话的全局认知中', 10, '#999', uploadTextAlpha * 0.45, 'left');
+  }
+
+  // L2 标注 (4.5s)
+  const l2Alpha = fadeIn(t, 4.5, 0.8);
+  if (l2Alpha > 0) {
+    for (const id of ['a', 'b', 'c']) {
+      const n = getNode(id);
+      // 放在节点侧边
+      const offX = (n.r + 40);
+      const offY = 0;
+      drawPill(px(n) + offX, py(n) + offY, 'L2 摘要', 'rgba(58,107,197,0.08)', 'rgba(58,107,197,0.35)', '#3a6bc5', l2Alpha * 0.8);
+    }
+  }
+
+  // ══════════════════════════════════
+  // 阶段 4: Main 全局意识 (5.5s)
+  // ══════════════════════════════════
+  const glowAlpha = fadeIn(t, 5.5, 1.0);
+  if (glowAlpha > 0) {
+    const main = getNode('main');
+    const pulseR = 60 + Math.sin(t * 2) * 12;
+    ctx.save(); ctx.globalAlpha = glowAlpha * 0.25;
+    const grad = ctx.createRadialGradient(px(main), py(main), 10, px(main), py(main), pulseR);
+    grad.addColorStop(0, '#3a6bc5'); grad.addColorStop(1, 'transparent');
+    ctx.fillStyle = grad;
+    ctx.beginPath(); ctx.arc(px(main), py(main), pulseR, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+
+    drawPill(px(main), py(main) - main.r - 20, 'L1 全局认知', 'rgba(58,107,197,0.12)', 'rgba(58,107,197,0.5)', '#3a6bc5', glowAlpha);
+  }
+
+  // ══════════════════════════════════
+  // 阶段 5: 洞察下发 (7~10.5s)
+  // ══════════════════════════════════
+  spawnInsight(t);
+  drawParticles(insightParticles, t);
+
+  // 下发流向箭头
+  const insightArrowAlpha = fadeIn(t, 7.2, 0.8);
+  if (insightArrowAlpha > 0) {
+    const main = getNode('main');
+    for (const id of ['a', 'b', 'c']) {
+      const n = getNode(id);
+      const dx = px(n) - px(main), dy = py(n) - py(main);
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      const ux = dx / dist, uy = dy / dist;
+      const fx = px(main) + ux * (main.r + 8), fy = py(main) + uy * (main.r + 8);
+      const tx = px(n) - ux * (n.r + 8), ty = py(n) - uy * (n.r + 8);
+      drawFlowArrow(fx, fy, tx, ty, '#e8a838', insightArrowAlpha * 0.35, 0);
+    }
+  }
+
+  // 右侧洞察下发说明
+  const insightTextAlpha = fadeIn(t, 7.5, 0.8);
+  if (insightTextAlpha > 0) {
+    const rx = W * 0.98, ry = H * 0.44;
+    drawCnLabel(rx, ry, '⬇ 洞察下发', 16, '#e8a838', insightTextAlpha * 0.85, 'right');
+    drawCnLabel(rx, ry + 22, '跨会话关联发现', 11, '#e8a838', insightTextAlpha * 0.6, 'right');
+    drawCnLabel(rx, ry + 38, '矛盾检测与提醒', 11, '#e8a838', insightTextAlpha * 0.6, 'right');
+    drawCnLabel(rx, ry + 54, '全局认知同步', 11, '#e8a838', insightTextAlpha * 0.6, 'right');
+    drawCnLabel(rx, ry + 78, '主会话将跨节点洞察', 10, '#999', insightTextAlpha * 0.45, 'right');
+    drawCnLabel(rx, ry + 94, '广播回各个子会话', 10, '#999', insightTextAlpha * 0.45, 'right');
+    drawCnLabel(rx, ry + 110, '保持整体认知连贯', 10, '#999', insightTextAlpha * 0.45, 'right');
+  }
+
+  // ══════════════════════════════════
+  // 阶段 6: 底部总结 (9s+)
+  // ══════════════════════════════════
+  const sumAlpha = fadeIn(t, 9.0, 1.0);
+  if (sumAlpha > 0) {
+    ctx.save(); ctx.globalAlpha = sumAlpha * 0.6;
+    ctx.font = '15px -apple-system, "PingFang SC", sans-serif';
+    ctx.textAlign = 'center'; ctx.fillStyle = '#444';
+    ctx.fillText('三层记忆驱动 · 全局意识协调 · 每个节点独立深入，整体认知始终连贯', W / 2, H * 0.935 - 18);
+    ctx.restore();
+  }
+
+  ctx.restore();
+
+  if (t < 14) requestAnimationFrame(frame);
+}
+
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
