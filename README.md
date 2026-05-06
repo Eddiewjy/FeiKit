@@ -1,12 +1,4 @@
 
-<h3 align="center">AI 协作拓扑平台</h3>
-<p align="center">让你与 AI 协作解决问题的过程变得有结构、能生长、可沉淀、可复用。</p>
-<p align="center">不是帮你聊得更好，是给人与 AI 一个真正配得上复杂问题的协作框架。</p>
-<p align="center">
-  <img src="https://img.shields.io/badge/%23RedHackathon-red?style=for-the-badge" />
-</p>
-
----
 
 ## 我们解决了什么问题
 
