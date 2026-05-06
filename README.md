@@ -1,6 +1,3 @@
-<p align="center">
-  <img src="assets/MindKitlogo.jpeg" width="480" />
-</p>
 
 <h3 align="center">AI 协作拓扑平台</h3>
 <p align="center">让你与 AI 协作解决问题的过程变得有结构、能生长、可沉淀、可复用。</p>
